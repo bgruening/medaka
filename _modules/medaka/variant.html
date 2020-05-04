@@ -1,0 +1,500 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>medaka.variant &mdash; Medaka 1.0.0 documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+  <script type="text/javascript" src="../../_static/js/modernizr.min.js"></script>
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="../../" src="../../_static/documentation_options.js"></script>
+        <script src="../../_static/jquery.js"></script>
+        <script src="../../_static/underscore.js"></script>
+        <script src="../../_static/doctools.js"></script>
+        <script src="../../_static/language_data.js"></script>
+    
+    <script type="text/javascript" src="../../_static/js/theme.js"></script>
+
+    
+
+  
+  <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="../../index.html" class="icon icon-home"> Medaka
+          
+
+          
+          </a>
+
+          
+            
+            
+              <div class="version">
+                1.0.0
+              </div>
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../installation.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../benchmarks.html">Benchmarks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../snp.html">Variant calling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../methylation.html">Methylation calling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../walkthrough.html">Walkthrough</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../draft_origin.html">Origin of the draft sequence</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../development.html">Development</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../future.html">History and Future Directions</a></li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Medaka</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="../../index.html">Docs</a> &raquo;</li>
+        
+          <li><a href="../index.html">Module code</a> &raquo;</li>
+        
+          <li><a href="../medaka.html">medaka</a> &raquo;</li>
+        
+      <li>medaka.variant</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <h1>Source code for medaka.variant</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Creation of variant call files from network outputs.&quot;&quot;&quot;</span>
+<span class="kn">import</span> <span class="nn">collections</span>
+<span class="kn">import</span> <span class="nn">itertools</span>
+
+<span class="kn">import</span> <span class="nn">intervaltree</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">pysam</span>
+
+<span class="kn">import</span> <span class="nn">medaka.common</span>
+<span class="kn">import</span> <span class="nn">medaka.datastore</span>
+<span class="kn">import</span> <span class="nn">medaka.vcf</span>
+
+
+<div class="viewcode-block" id="trim_samples"><a class="viewcode-back" href="../../medaka.html#medaka.variant.trim_samples">[docs]</a><span class="k">def</span> <span class="nf">trim_samples</span><span class="p">(</span><span class="n">sample_gen</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Generate trimmed samples.</span>
+
+<span class="sd">    Samples are trimmed to remove overlap between adjacent samples.</span>
+
+<span class="sd">    :param sample_gen: generator yielding `medaka.common.Sample` s</span>
+
+<span class="sd">    :yields: (`medaka.common.Sample` view, bool is_last_in_contig)</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span> <span class="o">=</span> <span class="n">medaka</span><span class="o">.</span><span class="n">common</span><span class="o">.</span><span class="n">get_named_logger</span><span class="p">(</span><span class="s1">&#39;TrimOverlap&#39;</span><span class="p">)</span>
+    <span class="n">s1</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">sample_gen</span><span class="p">)</span>
+    <span class="c1"># do not trim beginning of s1</span>
+    <span class="n">start_1</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="c1"># initialise in case we have one sample</span>
+    <span class="n">start_2</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">for</span> <span class="n">s2</span> <span class="ow">in</span> <span class="n">itertools</span><span class="o">.</span><span class="n">chain</span><span class="p">(</span><span class="n">sample_gen</span><span class="p">,</span> <span class="p">(</span><span class="kc">None</span><span class="p">,)):</span>
+        <span class="n">s1_name</span> <span class="o">=</span> <span class="s1">&#39;Unknown&#39;</span> <span class="k">if</span> <span class="n">s1</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">s1</span><span class="o">.</span><span class="n">name</span>
+        <span class="n">s2_name</span> <span class="o">=</span> <span class="s1">&#39;Unknown&#39;</span> <span class="k">if</span> <span class="n">s2</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">s2</span><span class="o">.</span><span class="n">name</span>
+
+        <span class="n">is_last_in_contig</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="c1"># s1 is last chunk</span>
+        <span class="k">if</span> <span class="n">s2</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># go to end of s1</span>
+            <span class="n">end_1</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="n">is_last_in_contig</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">rel</span> <span class="o">=</span> <span class="n">medaka</span><span class="o">.</span><span class="n">common</span><span class="o">.</span><span class="n">Sample</span><span class="o">.</span><span class="n">relative_position</span><span class="p">(</span><span class="n">s1</span><span class="p">,</span> <span class="n">s2</span><span class="p">)</span>
+            <span class="c1"># skip s2 if it is contained within s1</span>
+            <span class="k">if</span> <span class="n">rel</span> <span class="ow">is</span> <span class="n">medaka</span><span class="o">.</span><span class="n">common</span><span class="o">.</span><span class="n">Relationship</span><span class="o">.</span><span class="n">s2_within_s1</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;</span><span class="si">{}</span><span class="s1"> is contained within </span><span class="si">{}</span><span class="s1">, skipping.&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                    <span class="n">s2_name</span><span class="p">,</span> <span class="n">s1_name</span><span class="p">))</span>
+                <span class="k">continue</span>
+            <span class="k">elif</span> <span class="n">rel</span> <span class="ow">is</span> <span class="n">medaka</span><span class="o">.</span><span class="n">common</span><span class="o">.</span><span class="n">Relationship</span><span class="o">.</span><span class="n">forward_overlap</span><span class="p">:</span>
+                <span class="n">end_1</span><span class="p">,</span> <span class="n">start_2</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">medaka</span><span class="o">.</span><span class="n">common</span><span class="o">.</span><span class="n">Sample</span><span class="o">.</span><span class="n">overlap_indices</span><span class="p">(</span>
+                    <span class="n">s1</span><span class="p">,</span> <span class="n">s2</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">rel</span> <span class="ow">is</span> <span class="n">medaka</span><span class="o">.</span><span class="n">common</span><span class="o">.</span><span class="n">Relationship</span><span class="o">.</span><span class="n">forward_gapped</span><span class="p">:</span>
+                <span class="n">is_last_in_contig</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="n">end_1</span><span class="p">,</span> <span class="n">start_2</span> <span class="o">=</span> <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="s1">&#39;</span><span class="si">{}</span><span class="s1"> and </span><span class="si">{}</span><span class="s1"> cannot be concatenated as there is &#39;</span> <span class="o">+</span> \
+                      <span class="s1">&#39;no overlap and they do not abut.&#39;</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">s1_name</span><span class="p">,</span> <span class="n">s2_name</span><span class="p">))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+                    <span class="s1">&#39;Unexpected sample relationship </span><span class="si">{}</span><span class="s1"> &#39;</span>
+                    <span class="s1">&#39;between </span><span class="si">{}</span><span class="s1"> and </span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="n">rel</span><span class="p">),</span> <span class="n">s1</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">s2</span><span class="o">.</span><span class="n">name</span><span class="p">))</span>
+
+        <span class="k">yield</span> <span class="n">s1</span><span class="o">.</span><span class="n">slice</span><span class="p">(</span><span class="nb">slice</span><span class="p">(</span><span class="n">start_1</span><span class="p">,</span> <span class="n">end_1</span><span class="p">)),</span> <span class="n">is_last_in_contig</span>
+
+        <span class="n">s1</span> <span class="o">=</span> <span class="n">s2</span>
+        <span class="n">start_1</span> <span class="o">=</span> <span class="n">start_2</span></div>
+
+
+<div class="viewcode-block" id="join_samples"><a class="viewcode-back" href="../../medaka.html#medaka.variant.join_samples">[docs]</a><span class="k">def</span> <span class="nf">join_samples</span><span class="p">(</span><span class="n">sample_gen</span><span class="p">,</span> <span class="n">ref_seq</span><span class="p">,</span> <span class="n">label_scheme</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Process stream of trimmed Samples.</span>
+
+<span class="sd">    Care is taken to ensure a variant is not split across</span>
+<span class="sd">    multiple Samples.</span>
+
+<span class="sd">    :param sample_gen: stream of (`medaka.common.Sample`,</span>
+<span class="sd">        bool is_last_in_contig)</span>
+<span class="sd">    :param ref_seq: str, reference sequence</span>
+
+<span class="sd">    :yields: `medaka.common.Sample` s</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">queue</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">s</span><span class="p">,</span> <span class="n">is_last_in_contig</span> <span class="ow">in</span> <span class="n">sample_gen</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">is_last_in_contig</span><span class="p">:</span>
+            <span class="c1"># there are no further samples in this contig</span>
+            <span class="c1"># all remaining variants must be in this contig</span>
+            <span class="c1"># or in the queue, so process and empty queue</span>
+            <span class="n">queue</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+            <span class="k">yield</span> <span class="n">medaka</span><span class="o">.</span><span class="n">common</span><span class="o">.</span><span class="n">Sample</span><span class="o">.</span><span class="n">from_samples</span><span class="p">(</span><span class="n">queue</span><span class="p">)</span>
+            <span class="n">queue</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">continue</span>
+
+        <span class="c1"># find last non-variant call, i.e. a major position which</span>
+        <span class="c1"># has no minor positions and is the same as the ref</span>
+
+        <span class="c1"># call retaining gaps cast to array</span>
+        <span class="n">call_with_gaps</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span>
+            <span class="n">label_scheme</span><span class="o">.</span><span class="n">decode_consensus</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">with_gaps</span><span class="o">=</span><span class="kc">True</span><span class="p">)),</span> <span class="n">dtype</span><span class="o">=</span><span class="s1">&#39;|U1&#39;</span><span class="p">)</span>
+
+        <span class="k">def</span> <span class="nf">get_symbol</span><span class="p">(</span><span class="n">p</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">ref_seq</span><span class="p">[</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;major&#39;</span><span class="p">]]</span> <span class="k">if</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;minor&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span> <span class="k">else</span> <span class="s1">&#39;*&#39;</span>
+
+        <span class="n">ref_seq_with_gaps</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">fromiter</span><span class="p">(</span>
+            <span class="p">(</span><span class="n">get_symbol</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">s</span><span class="o">.</span><span class="n">positions</span><span class="p">),</span>
+            <span class="n">dtype</span><span class="o">=</span><span class="s1">&#39;|U1&#39;</span><span class="p">,</span>
+            <span class="n">count</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">positions</span><span class="p">))</span>
+
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">call_with_gaps</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">ref_seq_with_gaps</span><span class="p">)</span>
+
+        <span class="n">is_diff</span> <span class="o">=</span> <span class="n">call_with_gaps</span> <span class="o">!=</span> <span class="n">ref_seq_with_gaps</span>
+        <span class="c1"># don&#39;t count a minor position called as gap as a match</span>
+        <span class="n">both_gap</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">logical_and</span><span class="p">(</span><span class="n">call_with_gaps</span> <span class="o">==</span> <span class="s1">&#39;*&#39;</span><span class="p">,</span>
+                                  <span class="n">ref_seq_with_gaps</span> <span class="o">==</span> <span class="s1">&#39;*&#39;</span><span class="p">)</span>
+        <span class="n">is_var</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">logical_or</span><span class="p">(</span><span class="n">is_diff</span><span class="p">,</span> <span class="n">both_gap</span><span class="p">)</span>
+
+        <span class="c1"># if the entire slice of Sample is a variant, add it to queue</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">is_var</span><span class="p">):</span>
+            <span class="n">queue</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+            <span class="k">continue</span>
+
+        <span class="n">major_inds</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">positions</span><span class="p">[</span><span class="s1">&#39;minor&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="n">major_pos</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">positions</span><span class="p">[</span><span class="s1">&#39;major&#39;</span><span class="p">][</span><span class="n">major_inds</span><span class="p">]</span>
+        <span class="n">major_call</span> <span class="o">=</span> <span class="n">call_with_gaps</span><span class="p">[</span><span class="n">major_inds</span><span class="p">]</span>
+        <span class="n">ref_seq_as_array</span> <span class="o">=</span> <span class="n">ref_seq_with_gaps</span><span class="p">[</span><span class="n">major_inds</span><span class="p">]</span>
+
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">major_call</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">ref_seq_as_array</span><span class="p">)</span>
+
+        <span class="n">is_diff</span> <span class="o">=</span> <span class="n">major_call</span> <span class="o">!=</span> <span class="n">ref_seq_as_array</span>
+
+        <span class="k">for</span> <span class="n">offset</span><span class="p">,</span> <span class="n">is_diff_i</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">is_diff</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]):</span>
+            <span class="c1"># Even if the last position does not look like a variant,</span>
+            <span class="c1"># we can&#39;t know if the first pos in next chunk is not an</span>
+            <span class="c1"># insertion =&gt; we need last non-variant position before</span>
+            <span class="c1"># last position.</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">is_diff_i</span><span class="p">:</span>
+                <span class="k">break</span>
+        <span class="n">last_non_var_pos</span> <span class="o">=</span> <span class="n">major_pos</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span> <span class="o">-</span> <span class="n">offset</span><span class="p">]</span>
+        <span class="n">last_non_var_start</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span>
+            <span class="n">s</span><span class="o">.</span><span class="n">positions</span><span class="p">[</span><span class="s1">&#39;major&#39;</span><span class="p">],</span>
+            <span class="n">last_non_var_pos</span><span class="p">,</span> <span class="n">side</span><span class="o">=</span><span class="s1">&#39;left&#39;</span><span class="p">)</span>
+        <span class="n">to_yield</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">slice</span><span class="p">(</span><span class="nb">slice</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">last_non_var_start</span><span class="p">))</span>
+        <span class="n">to_queue</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">slice</span><span class="p">(</span><span class="nb">slice</span><span class="p">(</span><span class="n">last_non_var_start</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span>
+
+        <span class="k">yield</span> <span class="n">medaka</span><span class="o">.</span><span class="n">common</span><span class="o">.</span><span class="n">Sample</span><span class="o">.</span><span class="n">from_samples</span><span class="p">(</span><span class="n">queue</span> <span class="o">+</span> <span class="p">[</span><span class="n">to_yield</span><span class="p">])</span>
+        <span class="n">queue</span> <span class="o">=</span> <span class="p">[</span><span class="n">to_queue</span><span class="p">]</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">queue</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s1">&#39;Reached end of generator at </span><span class="si">{}</span><span class="s1"> without &#39;</span>
+            <span class="s1">&#39;is_last_in_contig being True&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">name</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="snps_from_hdf"><a class="viewcode-back" href="../../medaka.html#medaka.variant.snps_from_hdf">[docs]</a><span class="k">def</span> <span class="nf">snps_from_hdf</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Entry point for SNP calling from HDF5 files.</span>
+
+<span class="sd">    A `LabelScheme` read from file is used to decode SNPs. All `LabelScheme` s</span>
+<span class="sd">    define a `decode_snps` public method. We do not need to use `join_samples`</span>
+<span class="sd">    to look for variants overlapping sample slice boundaries because we only</span>
+<span class="sd">    analyse a single locus at a time. This means that `LabelScheme` s that do</span>
+<span class="sd">    not define the `decode_consensus` method (called within `join_samples`) can</span>
+<span class="sd">    be used.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span> <span class="o">=</span> <span class="n">medaka</span><span class="o">.</span><span class="n">common</span><span class="o">.</span><span class="n">get_named_logger</span><span class="p">(</span><span class="s1">&#39;SNPs&#39;</span><span class="p">)</span>
+
+    <span class="n">index</span> <span class="o">=</span> <span class="n">medaka</span><span class="o">.</span><span class="n">datastore</span><span class="o">.</span><span class="n">DataIndex</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">inputs</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">regions</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">regions</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">index</span><span class="o">.</span><span class="n">index</span><span class="p">)</span>
+    <span class="n">regions</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">medaka</span><span class="o">.</span><span class="n">common</span><span class="o">.</span><span class="n">Region</span><span class="o">.</span><span class="n">from_string</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">args</span><span class="o">.</span><span class="n">regions</span><span class="p">]</span>
+
+    <span class="c1"># lookup LabelScheme stored in HDF5</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">label_scheme</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">metadata</span><span class="p">[</span><span class="s1">&#39;label_scheme&#39;</span><span class="p">]</span>
+    <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+            <span class="s2">&quot;Could not find `label_scheme` metadata in input file, &quot;</span>
+            <span class="s2">&quot;assuming HaploidLabelScheme.&quot;</span><span class="p">)</span>
+        <span class="n">label_scheme</span> <span class="o">=</span> <span class="n">medaka</span><span class="o">.</span><span class="n">labels</span><span class="o">.</span><span class="n">HaploidLabelScheme</span><span class="p">()</span>
+
+    <span class="c1"># tell label_scheme whether we want verbose info fields</span>
+    <span class="n">label_scheme</span><span class="o">.</span><span class="n">verbose</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">verbose</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Label decoding is:</span><span class="se">\n</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+        <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s1">&#39;</span><span class="si">{}</span><span class="s1">: </span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span>
+                  <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">label_scheme</span><span class="o">.</span><span class="n">_decoding</span><span class="o">.</span><span class="n">items</span><span class="p">())))</span>
+
+    <span class="n">meta_info</span> <span class="o">=</span> <span class="n">label_scheme</span><span class="o">.</span><span class="n">snp_metainfo</span>
+
+    <span class="n">ref_names</span> <span class="o">=</span> <span class="p">[</span><span class="n">r</span><span class="o">.</span><span class="n">ref_name</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">regions</span><span class="p">]</span>
+    <span class="k">with</span> <span class="n">medaka</span><span class="o">.</span><span class="n">vcf</span><span class="o">.</span><span class="n">VCFWriter</span><span class="p">(</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">output</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="s1">&#39;4.1&#39;</span><span class="p">,</span>
+            <span class="n">contigs</span><span class="o">=</span><span class="n">ref_names</span><span class="p">,</span> <span class="n">meta_info</span><span class="o">=</span><span class="n">meta_info</span><span class="p">)</span> <span class="k">as</span> <span class="n">vcf_writer</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">reg</span> <span class="ow">in</span> <span class="n">regions</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Processing </span><span class="si">{}</span><span class="s2">.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">reg</span><span class="p">))</span>
+            <span class="n">ref_seq</span> <span class="o">=</span> <span class="n">pysam</span><span class="o">.</span><span class="n">FastaFile</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">ref_fasta</span><span class="p">)</span><span class="o">.</span><span class="n">fetch</span><span class="p">(</span>
+                <span class="n">reference</span><span class="o">=</span><span class="n">reg</span><span class="o">.</span><span class="n">ref_name</span><span class="p">)</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+
+            <span class="n">samples</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">yield_from_feature_files</span><span class="p">(</span><span class="n">regions</span><span class="o">=</span><span class="p">[</span><span class="n">reg</span><span class="p">])</span>
+            <span class="n">trimmed_samples</span> <span class="o">=</span> <span class="n">trim_samples</span><span class="p">(</span><span class="n">samples</span><span class="p">)</span>
+
+            <span class="k">for</span> <span class="n">sample</span><span class="p">,</span> <span class="n">is_last</span> <span class="ow">in</span> <span class="n">trimmed_samples</span><span class="p">:</span>
+                <span class="n">snps</span> <span class="o">=</span> <span class="n">label_scheme</span><span class="o">.</span><span class="n">decode_snps</span><span class="p">(</span>
+                    <span class="n">sample</span><span class="p">,</span> <span class="n">ref_seq</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">threshold</span><span class="p">)</span>
+                <span class="n">vcf_writer</span><span class="o">.</span><span class="n">write_variants</span><span class="p">(</span><span class="n">snps</span><span class="p">,</span> <span class="n">sort</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="variants_from_hdf"><a class="viewcode-back" href="../../medaka.html#medaka.variant.variants_from_hdf">[docs]</a><span class="k">def</span> <span class="nf">variants_from_hdf</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Entry point for variant calling from HDF5 files.</span>
+
+<span class="sd">    A `LabelScheme` read from HDF must define both a `decode_variants`</span>
+<span class="sd">    and `decode_consnesus` method. The latter is used with `join_samples`</span>
+<span class="sd">    to detect multi-locus variants spanning `Sample` slice boundaries.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span> <span class="o">=</span> <span class="n">medaka</span><span class="o">.</span><span class="n">common</span><span class="o">.</span><span class="n">get_named_logger</span><span class="p">(</span><span class="s1">&#39;Variants&#39;</span><span class="p">)</span>
+
+    <span class="n">index</span> <span class="o">=</span> <span class="n">medaka</span><span class="o">.</span><span class="n">datastore</span><span class="o">.</span><span class="n">DataIndex</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">inputs</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">regions</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">regions</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">index</span><span class="o">.</span><span class="n">index</span><span class="p">)</span>
+    <span class="n">regions</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">medaka</span><span class="o">.</span><span class="n">common</span><span class="o">.</span><span class="n">Region</span><span class="o">.</span><span class="n">from_string</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">args</span><span class="o">.</span><span class="n">regions</span><span class="p">]</span>
+
+    <span class="c1"># lookup LabelScheme stored in HDF5</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">label_scheme</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">metadata</span><span class="p">[</span><span class="s1">&#39;label_scheme&#39;</span><span class="p">]</span>
+    <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+            <span class="s2">&quot;Could not find `label_scheme` metadata in input file, &quot;</span>
+            <span class="s2">&quot;assuming HaploidLabelScheme.&quot;</span><span class="p">)</span>
+        <span class="n">label_scheme</span> <span class="o">=</span> <span class="n">medaka</span><span class="o">.</span><span class="n">labels</span><span class="o">.</span><span class="n">HaploidLabelScheme</span><span class="p">()</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Label decoding is:</span><span class="se">\n</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+        <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s1">&#39;</span><span class="si">{}</span><span class="s1">: </span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span>
+                  <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">label_scheme</span><span class="o">.</span><span class="n">_decoding</span><span class="o">.</span><span class="n">items</span><span class="p">())))</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">label_scheme</span><span class="p">,</span> <span class="s1">&#39;decode_variants&#39;</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span>
+            <span class="s1">&#39;</span><span class="si">{}</span><span class="s1"> does not support decoding of variants&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">label_scheme</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">label_scheme</span><span class="p">,</span> <span class="s1">&#39;decode_consensus&#39;</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span>
+            <span class="s1">&#39;</span><span class="si">{}</span><span class="s1"> does not support consensus decoding required &#39;</span>
+            <span class="s1">&#39;for variant calling.&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">label_scheme</span><span class="p">))</span>
+
+    <span class="c1"># tell label_scheme whether we want verbose info fields</span>
+    <span class="n">label_scheme</span><span class="o">.</span><span class="n">verbose</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">verbose</span>
+
+    <span class="n">meta_info</span> <span class="o">=</span> <span class="n">label_scheme</span><span class="o">.</span><span class="n">variant_metainfo</span>
+
+    <span class="n">ref_names</span> <span class="o">=</span> <span class="p">[</span><span class="n">r</span><span class="o">.</span><span class="n">ref_name</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">regions</span><span class="p">]</span>
+    <span class="k">with</span> <span class="n">medaka</span><span class="o">.</span><span class="n">vcf</span><span class="o">.</span><span class="n">VCFWriter</span><span class="p">(</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">output</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="s1">&#39;4.1&#39;</span><span class="p">,</span>
+            <span class="n">contigs</span><span class="o">=</span><span class="n">ref_names</span><span class="p">,</span> <span class="n">meta_info</span><span class="o">=</span><span class="n">meta_info</span><span class="p">)</span> <span class="k">as</span> <span class="n">vcf_writer</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">reg</span> <span class="ow">in</span> <span class="n">regions</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Processing </span><span class="si">{}</span><span class="s2">.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">reg</span><span class="p">))</span>
+            <span class="n">ref_seq</span> <span class="o">=</span> <span class="n">pysam</span><span class="o">.</span><span class="n">FastaFile</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">ref_fasta</span><span class="p">)</span><span class="o">.</span><span class="n">fetch</span><span class="p">(</span>
+                <span class="n">reference</span><span class="o">=</span><span class="n">reg</span><span class="o">.</span><span class="n">ref_name</span><span class="p">)</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+
+            <span class="n">samples</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">yield_from_feature_files</span><span class="p">([</span><span class="n">reg</span><span class="p">])</span>
+            <span class="n">trimmed_samples</span> <span class="o">=</span> <span class="n">trim_samples</span><span class="p">(</span><span class="n">samples</span><span class="p">)</span>
+            <span class="n">joined_samples</span> <span class="o">=</span> <span class="n">join_samples</span><span class="p">(</span>
+                <span class="n">trimmed_samples</span><span class="p">,</span> <span class="n">ref_seq</span><span class="p">,</span> <span class="n">label_scheme</span><span class="p">)</span>
+
+            <span class="k">for</span> <span class="n">sample</span> <span class="ow">in</span> <span class="n">joined_samples</span><span class="p">:</span>
+                <span class="n">variants</span> <span class="o">=</span> <span class="n">label_scheme</span><span class="o">.</span><span class="n">decode_variants</span><span class="p">(</span><span class="n">sample</span><span class="p">,</span> <span class="n">ref_seq</span><span class="p">)</span>
+                <span class="n">vcf_writer</span><span class="o">.</span><span class="n">write_variants</span><span class="p">(</span><span class="n">variants</span><span class="p">,</span> <span class="n">sort</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="samples_to_bed"><a class="viewcode-back" href="../../medaka.html#medaka.variant.samples_to_bed">[docs]</a><span class="k">def</span> <span class="nf">samples_to_bed</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Write a bed file from samples in a datastore file.&quot;&quot;&quot;</span>
+    <span class="n">logger</span> <span class="o">=</span> <span class="n">medaka</span><span class="o">.</span><span class="n">common</span><span class="o">.</span><span class="n">get_named_logger</span><span class="p">(</span><span class="s1">&#39;Variants&#39;</span><span class="p">)</span>
+
+    <span class="n">index</span> <span class="o">=</span> <span class="n">medaka</span><span class="o">.</span><span class="n">datastore</span><span class="o">.</span><span class="n">DataIndex</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">inputs</span><span class="p">)</span>
+
+    <span class="n">trees</span> <span class="o">=</span> <span class="n">collections</span><span class="o">.</span><span class="n">defaultdict</span><span class="p">(</span><span class="n">intervaltree</span><span class="o">.</span><span class="n">IntervalTree</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Building interval tree&quot;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">s</span><span class="p">,</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">index</span><span class="o">.</span><span class="n">samples</span><span class="p">:</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="n">medaka</span><span class="o">.</span><span class="n">common</span><span class="o">.</span><span class="n">Sample</span><span class="o">.</span><span class="n">decode_sample_name</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+        <span class="c1"># start and end are string repr of floats (major.minor coordinates)</span>
+        <span class="n">start</span><span class="p">,</span> <span class="n">end</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">d</span><span class="p">[</span><span class="s1">&#39;start&#39;</span><span class="p">])),</span> <span class="nb">int</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">d</span><span class="p">[</span><span class="s1">&#39;end&#39;</span><span class="p">]))</span>
+        <span class="c1"># add one to end of interval, as intervaltree intervals and bed file</span>
+        <span class="c1"># intervals are end-exclusive (i.e. they don&#39;t contain the last</span>
+        <span class="c1"># coordinate), whilst the last position in a sample is included in that</span>
+        <span class="c1"># sample.</span>
+        <span class="n">trees</span><span class="p">[</span><span class="n">d</span><span class="p">[</span><span class="s1">&#39;ref_name&#39;</span><span class="p">]]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">intervaltree</span><span class="o">.</span><span class="n">Interval</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">output</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">fh</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">contig</span><span class="p">,</span> <span class="n">tree</span> <span class="ow">in</span> <span class="n">trees</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="c1"># strict=False as consecutive samples can start and end on the same</span>
+            <span class="c1"># major (overlap is in minor) hence if samples are abutting but not</span>
+            <span class="c1"># overlapping in major coords, merge them</span>
+            <span class="n">tree</span><span class="o">.</span><span class="n">merge_overlaps</span><span class="p">(</span><span class="n">strict</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing intervals for </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">contig</span><span class="p">))</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">tree</span><span class="o">.</span><span class="n">all_intervals</span><span class="p">):</span>
+                <span class="n">fh</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">{}</span><span class="se">\t</span><span class="si">{}</span><span class="se">\t</span><span class="si">{}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">contig</span><span class="p">,</span> <span class="n">i</span><span class="o">.</span><span class="n">begin</span><span class="p">,</span> <span class="n">i</span><span class="o">.</span><span class="n">end</span><span class="p">))</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;All done, bed file written to </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">output</span><span class="p">))</span></div>
+</pre></div>
+
+           </div>
+           
+          </div>
+          <footer>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2017-19, Oxford Nanopore Technologies
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>

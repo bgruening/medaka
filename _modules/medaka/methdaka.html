@@ -1,0 +1,681 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>medaka.methdaka &mdash; Medaka 1.0.0 documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+  <script type="text/javascript" src="../../_static/js/modernizr.min.js"></script>
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="../../" src="../../_static/documentation_options.js"></script>
+        <script src="../../_static/jquery.js"></script>
+        <script src="../../_static/underscore.js"></script>
+        <script src="../../_static/doctools.js"></script>
+        <script src="../../_static/language_data.js"></script>
+    
+    <script type="text/javascript" src="../../_static/js/theme.js"></script>
+
+    
+
+  
+  <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="../../index.html" class="icon icon-home"> Medaka
+          
+
+          
+          </a>
+
+          
+            
+            
+              <div class="version">
+                1.0.0
+              </div>
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../installation.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../benchmarks.html">Benchmarks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../snp.html">Variant calling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../methylation.html">Methylation calling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../walkthrough.html">Walkthrough</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../draft_origin.html">Origin of the draft sequence</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../development.html">Development</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../future.html">History and Future Directions</a></li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Medaka</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="../../index.html">Docs</a> &raquo;</li>
+        
+          <li><a href="../index.html">Module code</a> &raquo;</li>
+        
+          <li><a href="../medaka.html">medaka</a> &raquo;</li>
+        
+      <li>medaka.methdaka</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <h1>Source code for medaka.methdaka</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Functionality for aggregating single read methylation calls.&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">Counter</span><span class="p">,</span> <span class="n">namedtuple</span>
+<span class="kn">import</span> <span class="nn">queue</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">import</span> <span class="nn">threading</span>
+<span class="kn">import</span> <span class="nn">time</span>
+
+<span class="kn">import</span> <span class="nn">mappy</span>
+<span class="kn">from</span> <span class="nn">ont_fast5_api.conversion_tools.conversion_utils</span> <span class="kn">import</span> <span class="n">get_fast5_file_list</span>
+<span class="kn">from</span> <span class="nn">ont_fast5_api.fast5_interface</span> <span class="kn">import</span> <span class="n">get_fast5_file</span>
+<span class="kn">import</span> <span class="nn">pysam</span>
+
+<span class="kn">import</span> <span class="nn">libmedaka</span>
+<span class="kn">import</span> <span class="nn">medaka.common</span>
+<span class="kn">from</span> <span class="nn">medaka.executor</span> <span class="kn">import</span> <span class="n">ProcessPoolExecutor</span><span class="p">,</span> <span class="n">ThreadPoolExecutor</span>
+
+<span class="n">BASECALLANALYSIS</span> <span class="o">=</span> <span class="s1">&#39;Basecall_1D&#39;</span>
+<span class="n">MODBASEPATH</span> <span class="o">=</span> <span class="s1">&#39;BaseCalled_template/ModBaseProbs&#39;</span>
+<span class="n">FASTQPATH</span> <span class="o">=</span> <span class="s1">&#39;BaseCalled_template/Fastq&#39;</span>
+<span class="n">BASES</span> <span class="o">=</span> <span class="s1">&#39;A 6mA C 5mC G T&#39;</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+<span class="n">MODTYPE</span> <span class="o">=</span> <span class="p">[(</span><span class="n">b</span><span class="p">,</span> <span class="s1">&#39;uint8&#39;</span><span class="p">)</span> <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">BASES</span><span class="p">]</span>
+<span class="n">MOTIFS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;dcm&#39;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="c1"># seq (on fwd strand): [fwd offset, rev offset]</span>
+        <span class="s1">&#39;CCAGG&#39;</span><span class="p">:</span> <span class="p">((</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="s1">&#39;MC&#39;</span><span class="p">),</span>
+        <span class="s1">&#39;CCTGG&#39;</span><span class="p">:</span> <span class="p">((</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="s1">&#39;MC&#39;</span><span class="p">)},</span>
+    <span class="s1">&#39;dam&#39;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s1">&#39;GATC&#39;</span><span class="p">:</span> <span class="p">((</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="s1">&#39;MA&#39;</span><span class="p">)},</span>
+    <span class="s1">&#39;cpg&#39;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s1">&#39;CG&#39;</span><span class="p">:</span> <span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="s1">&#39;MC&#39;</span><span class="p">)},</span>
+    <span class="s1">&#39;all&#39;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="c1"># TODO: these will appear distinct in output, should fix</span>
+        <span class="s1">&#39;C&#39;</span><span class="p">:</span> <span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="s1">&#39;MC&#39;</span><span class="p">),</span>
+        <span class="s1">&#39;G&#39;</span><span class="p">:</span> <span class="p">((</span><span class="kc">None</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="s1">&#39;MC&#39;</span><span class="p">),</span>
+        <span class="s1">&#39;A&#39;</span><span class="p">:</span> <span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="s1">&#39;MA&#39;</span><span class="p">),</span>
+        <span class="s1">&#39;T&#39;</span><span class="p">:</span> <span class="p">((</span><span class="kc">None</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="s1">&#39;MA&#39;</span><span class="p">)}</span>
+    <span class="p">}</span>
+<span class="n">Read</span> <span class="o">=</span> <span class="n">namedtuple</span><span class="p">(</span><span class="s1">&#39;Read&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;read_id&#39;</span><span class="p">,</span> <span class="s1">&#39;sequence&#39;</span><span class="p">,</span> <span class="s1">&#39;quality&#39;</span><span class="p">])</span>
+
+
+<div class="viewcode-block" id="format_uint8_list"><a class="viewcode-back" href="../../medaka.html#medaka.methdaka.format_uint8_list">[docs]</a><span class="k">def</span> <span class="nf">format_uint8_list</span><span class="p">(</span><span class="n">array</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Serialize a numpy array to a comma separated list.</span>
+
+<span class="sd">    :param array: a uint8 array.</span>
+
+<span class="sd">    :returns: a comma separate string.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">ffi</span> <span class="o">=</span> <span class="n">libmedaka</span><span class="o">.</span><span class="n">ffi</span>
+    <span class="n">lib</span> <span class="o">=</span> <span class="n">libmedaka</span><span class="o">.</span><span class="n">lib</span>
+
+    <span class="n">pointer</span> <span class="o">=</span> <span class="n">ffi</span><span class="o">.</span><span class="n">cast</span><span class="p">(</span>
+        <span class="s2">&quot;uint8_t *&quot;</span><span class="p">,</span>
+        <span class="n">array</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span><span class="o">.</span><span class="n">ctypes</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">ffi</span><span class="o">.</span><span class="n">new</span><span class="p">(</span><span class="s2">&quot;char[</span><span class="si">{}</span><span class="s2">]&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="mi">4</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">array</span><span class="p">)))</span>
+    <span class="n">lib</span><span class="o">.</span><span class="n">format_uint8_array</span><span class="p">(</span><span class="n">pointer</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">array</span><span class="p">),</span> <span class="n">result</span><span class="p">)</span>
+
+    <span class="n">string</span> <span class="o">=</span> <span class="n">ffi</span><span class="o">.</span><span class="n">string</span><span class="p">(</span><span class="n">result</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">string</span></div>
+
+
+<div class="viewcode-block" id="align_read"><a class="viewcode-back" href="../../medaka.html#medaka.methdaka.align_read">[docs]</a><span class="k">def</span> <span class="nf">align_read</span><span class="p">(</span><span class="n">aligner</span><span class="p">,</span> <span class="n">read</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="p">[]):</span>
+    <span class="sd">&quot;&quot;&quot;Aligns a `Read` namedtuple to produce a sam record.</span>
+
+<span class="sd">    :param aligner: a `mappy.Aligner` instance`</span>
+<span class="sd">    :param read: a `Read` namedtuple.</span>
+<span class="sd">    :param tags: list containing additional tags to add to sam record.</span>
+
+<span class="sd">    :returns: a (string) sam record.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">align</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">aligner</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="n">read</span><span class="o">.</span><span class="n">sequence</span><span class="p">,</span> <span class="n">MD</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">cs</span><span class="o">=</span><span class="kc">True</span><span class="p">))[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">except</span> <span class="ne">IndexError</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">align</span><span class="o">.</span><span class="n">strand</span> <span class="o">==</span> <span class="o">+</span><span class="mi">1</span><span class="p">:</span>
+        <span class="n">flag</span> <span class="o">=</span> <span class="s1">&#39;0&#39;</span>
+        <span class="n">seq</span> <span class="o">=</span> <span class="n">read</span><span class="o">.</span><span class="n">sequence</span>
+        <span class="n">qstring</span> <span class="o">=</span> <span class="n">read</span><span class="o">.</span><span class="n">quality</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">flag</span> <span class="o">=</span> <span class="s1">&#39;16&#39;</span>
+        <span class="n">seq</span> <span class="o">=</span> <span class="n">medaka</span><span class="o">.</span><span class="n">common</span><span class="o">.</span><span class="n">reverse_complement</span><span class="p">(</span><span class="n">read</span><span class="o">.</span><span class="n">sequence</span><span class="p">)</span>
+        <span class="n">qstring</span> <span class="o">=</span> <span class="n">read</span><span class="o">.</span><span class="n">quality</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">rname</span> <span class="o">=</span> <span class="n">align</span><span class="o">.</span><span class="n">ctg</span>
+    <span class="n">pos</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">align</span><span class="o">.</span><span class="n">r_st</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">mapq</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">align</span><span class="o">.</span><span class="n">mapq</span><span class="p">)</span>
+    <span class="n">clip</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s1">&#39;&#39;</span> <span class="k">if</span> <span class="n">x</span> <span class="o">==</span> <span class="mi">0</span> <span class="k">else</span> <span class="s1">&#39;</span><span class="si">{}</span><span class="s1">S&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="p">(</span><span class="n">align</span><span class="o">.</span><span class="n">q_st</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">seq</span><span class="p">)</span> <span class="o">-</span> <span class="n">align</span><span class="o">.</span><span class="n">q_en</span><span class="p">)]</span>
+    <span class="k">if</span> <span class="n">align</span><span class="o">.</span><span class="n">strand</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+        <span class="n">clip</span> <span class="o">=</span> <span class="n">clip</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">cigar</span> <span class="o">=</span> <span class="n">clip</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">align</span><span class="o">.</span><span class="n">cigar_str</span> <span class="o">+</span> <span class="n">clip</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">NM</span> <span class="o">=</span> <span class="s1">&#39;NM:i:&#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">align</span><span class="o">.</span><span class="n">NM</span><span class="p">)</span>
+
+    <span class="c1"># NOTE: tags written without reversal, see below</span>
+    <span class="n">sam</span> <span class="o">=</span> <span class="s1">&#39;</span><span class="se">\t</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">((</span>
+        <span class="n">read</span><span class="o">.</span><span class="n">read_id</span><span class="p">,</span> <span class="n">flag</span><span class="p">,</span> <span class="n">rname</span><span class="p">,</span> <span class="n">pos</span><span class="p">,</span> <span class="n">mapq</span><span class="p">,</span> <span class="n">cigar</span><span class="p">,</span>
+        <span class="s1">&#39;*&#39;</span><span class="p">,</span> <span class="s1">&#39;0&#39;</span><span class="p">,</span> <span class="s1">&#39;0&#39;</span><span class="p">,</span> <span class="n">seq</span><span class="p">,</span> <span class="n">qstring</span><span class="p">,</span> <span class="n">NM</span><span class="p">,</span> <span class="o">*</span><span class="n">tags</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">sam</span></div>
+
+
+<div class="viewcode-block" id="unaligned_read"><a class="viewcode-back" href="../../medaka.html#medaka.methdaka.unaligned_read">[docs]</a><span class="k">def</span> <span class="nf">unaligned_read</span><span class="p">(</span><span class="n">read</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="p">[]):</span>
+    <span class="sd">&quot;&quot;&quot;Create an unaligned sam record for a read.</span>
+
+<span class="sd">    :param read: a `Read` namedtuple.</span>
+<span class="sd">    :param tags: list containing additional tags to add to sam record.</span>
+
+<span class="sd">    :returns: a (string) sam record.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">sam</span> <span class="o">=</span> <span class="s1">&#39;</span><span class="se">\t</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">((</span>
+        <span class="n">read</span><span class="o">.</span><span class="n">read_id</span><span class="p">,</span> <span class="s1">&#39;4&#39;</span><span class="p">,</span> <span class="s1">&#39;*&#39;</span><span class="p">,</span> <span class="s1">&#39;0&#39;</span><span class="p">,</span> <span class="s1">&#39;255&#39;</span><span class="p">,</span> <span class="s1">&#39;*&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;*&#39;</span><span class="p">,</span> <span class="s1">&#39;0&#39;</span><span class="p">,</span> <span class="s1">&#39;0&#39;</span><span class="p">,</span> <span class="n">read</span><span class="o">.</span><span class="n">sequence</span><span class="p">,</span> <span class="n">read</span><span class="o">.</span><span class="n">quality</span><span class="p">,</span> <span class="o">*</span><span class="n">tags</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">sam</span></div>
+
+
+<div class="viewcode-block" id="hdf_to_sam_worker"><a class="viewcode-back" href="../../medaka.html#medaka.methdaka.hdf_to_sam_worker">[docs]</a><span class="k">def</span> <span class="nf">hdf_to_sam_worker</span><span class="p">(</span><span class="n">fname</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Extract and align basecall and methylation data from `.fast5`.</span>
+
+<span class="sd">    :param reference: `.fasta` file containing reference sequence(s).</span>
+<span class="sd">    :param fname: `.&#39;fast5` file containing read data.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span> <span class="o">=</span> <span class="n">medaka</span><span class="o">.</span><span class="n">common</span><span class="o">.</span><span class="n">get_named_logger</span><span class="p">(</span><span class="s1">&#39;ModExtract&#39;</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Processing </span><span class="si">{}</span><span class="s2">.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">fname</span><span class="p">))</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
+    <span class="k">with</span> <span class="n">get_fast5_file</span><span class="p">(</span><span class="n">fname</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f5</span><span class="p">:</span>
+        <span class="n">reads</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">f5</span><span class="o">.</span><span class="n">get_read_ids</span><span class="p">())</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Found </span><span class="si">{}</span><span class="s2"> reads for </span><span class="si">{}</span><span class="s2">.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">reads</span><span class="p">),</span> <span class="n">fname</span><span class="p">))</span>
+        <span class="k">for</span> <span class="n">read_id</span> <span class="ow">in</span> <span class="n">reads</span><span class="p">:</span>
+            <span class="n">read</span> <span class="o">=</span> <span class="n">f5</span><span class="o">.</span><span class="n">get_read</span><span class="p">(</span><span class="n">read_id</span><span class="p">)</span>
+            <span class="n">latest</span> <span class="o">=</span> <span class="n">read</span><span class="o">.</span><span class="n">get_latest_analysis</span><span class="p">(</span><span class="n">BASECALLANALYSIS</span><span class="p">)</span>
+            <span class="c1"># get modified base data</span>
+            <span class="n">mod_base</span> <span class="o">=</span> <span class="n">read</span><span class="o">.</span><span class="n">get_analysis_dataset</span><span class="p">(</span><span class="n">latest</span><span class="p">,</span> <span class="n">MODBASEPATH</span><span class="p">)</span>
+            <span class="n">mod_base</span> <span class="o">=</span> <span class="n">mod_base</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">MODTYPE</span><span class="p">)</span>
+            <span class="n">mA</span> <span class="o">=</span> <span class="s1">&#39;MA:B:C,</span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">format_uint8_list</span><span class="p">(</span><span class="n">mod_base</span><span class="p">[</span><span class="s1">&#39;6mA&#39;</span><span class="p">]))</span>
+            <span class="n">mC</span> <span class="o">=</span> <span class="s1">&#39;MC:B:C,</span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">format_uint8_list</span><span class="p">(</span><span class="n">mod_base</span><span class="p">[</span><span class="s1">&#39;5mC&#39;</span><span class="p">]))</span>
+            <span class="c1"># get basecalling data</span>
+            <span class="n">fastq</span> <span class="o">=</span> <span class="n">read</span><span class="o">.</span><span class="n">get_analysis_dataset</span><span class="p">(</span><span class="n">latest</span><span class="p">,</span> <span class="n">FASTQPATH</span><span class="p">)</span>
+            <span class="n">header</span><span class="p">,</span> <span class="n">sequence</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">qstring</span> <span class="o">=</span> <span class="n">fastq</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()</span>
+            <span class="c1"># put everything together</span>
+            <span class="n">read</span> <span class="o">=</span> <span class="n">Read</span><span class="p">(</span><span class="n">read_id</span><span class="p">,</span> <span class="n">sequence</span><span class="p">,</span> <span class="n">qstring</span><span class="p">)</span>
+            <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">read</span><span class="p">,</span> <span class="p">(</span><span class="n">mA</span><span class="p">,</span> <span class="n">mC</span><span class="p">)))</span>
+    <span class="k">return</span> <span class="n">results</span></div>
+
+
+<div class="viewcode-block" id="Aligner"><a class="viewcode-back" href="../../medaka.html#medaka.methdaka.Aligner">[docs]</a><span class="k">class</span> <span class="nc">Aligner</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Mappy alignment interface.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reference</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Initialize `mappy` interface.</span>
+
+<span class="sd">        :param reference: .fasta reference file.</span>
+<span class="sd">        :param kwargs: keyword arguments for `mappy.Aligner`.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">reference</span> <span class="o">=</span> <span class="n">reference</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">aligner</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_loadlock</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Lock</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">kwargs</span> <span class="o">=</span> <span class="n">kwargs</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">logger</span> <span class="o">=</span> <span class="n">medaka</span><span class="o">.</span><span class="n">common</span><span class="o">.</span><span class="n">get_named_logger</span><span class="p">(</span><span class="s1">&#39;Aligner&#39;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="Aligner.map"><a class="viewcode-back" href="../../medaka.html#medaka.methdaka.Aligner.map">[docs]</a>    <span class="k">def</span> <span class="nf">map</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">read</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="p">[]):</span>
+        <span class="sd">&quot;&quot;&quot;Map/align a read returning a sam record.</span>
+
+<span class="sd">        :param read: a `Read` namedtuple.</span>
+<span class="sd">        :param tags: list containing additional tags to add to sam record.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">aligner</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_loadlock</span><span class="o">.</span><span class="n">acquire</span><span class="p">()</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">aligner</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;Loading alignment index...&#39;</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">aligner</span> <span class="o">=</span> <span class="n">mappy</span><span class="o">.</span><span class="n">Aligner</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reference</span><span class="p">,</span> <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">kwargs</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;Alignment index loaded.&#39;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_loadlock</span><span class="o">.</span><span class="n">release</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">align_read</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">aligner</span><span class="p">,</span> <span class="n">read</span><span class="p">,</span> <span class="n">tags</span><span class="p">)</span></div></div>
+
+
+<div class="viewcode-block" id="Extractor"><a class="viewcode-back" href="../../medaka.html#medaka.methdaka.Extractor">[docs]</a><span class="k">class</span> <span class="nc">Extractor</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Extracts read data from .fast5 files.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">recursive</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">workers</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+            <span class="n">extractor</span><span class="o">=</span><span class="n">hdf_to_sam_worker</span><span class="p">,</span> <span class="n">max_size</span><span class="o">=</span><span class="mi">16000</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Initialize read data extraction.</span>
+
+<span class="sd">        :param path: .fast5 directory path.</span>
+<span class="sd">        :param recursive: search directory recursively.</span>
+<span class="sd">        :param workers: number of worker processes.</span>
+<span class="sd">        :param extractor: callback function to apply to each file.</span>
+<span class="sd">        :param max_size: approximate maximum size of internal queue.</span>
+<span class="sd">            When internal queue is at this size. Further read extraction</span>
+<span class="sd">            will block until results are consumed.</span>
+
+<span class="sd">        The results of the extractor can be accessed from the .get() method</span>
+<span class="sd">        or by iteration.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">path</span> <span class="o">=</span> <span class="n">path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">recursive</span> <span class="o">=</span> <span class="n">recursive</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">workers</span> <span class="o">=</span> <span class="n">workers</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">extractor</span> <span class="o">=</span> <span class="n">extractor</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_size</span> <span class="o">=</span> <span class="n">max_size</span>
+        <span class="c1"># setting max size for queue has no effect on pausing workers</span>
+        <span class="c1"># as the queue is filled from a callback in the main thread.</span>
+        <span class="c1"># Instead we just don&#39;t submit new jobs if the queue is above</span>
+        <span class="c1"># the requested size.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">queue</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">Queue</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">files_processed</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">total_files</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">logger</span> <span class="o">=</span> <span class="n">medaka</span><span class="o">.</span><span class="n">common</span><span class="o">.</span><span class="n">get_named_logger</span><span class="p">(</span><span class="s2">&quot;Extractor&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Starting worker processes.&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_thread</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_run</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_thread</span><span class="o">.</span><span class="n">daemon</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_thread</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">_run</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Iterate over input files and stores results into internal queue.&quot;&quot;&quot;</span>
+        <span class="n">fast5s</span> <span class="o">=</span> <span class="n">get_fast5_file_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">recursive</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">recursive</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">total_files</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">fast5s</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Found </span><span class="si">{}</span><span class="s2"> files to process.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">total_files</span><span class="p">))</span>
+        <span class="k">with</span> <span class="n">ProcessPoolExecutor</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">workers</span><span class="p">,</span> <span class="n">max_workers</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">workers</span><span class="p">)</span> <span class="k">as</span> <span class="n">executor</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">fname</span> <span class="ow">in</span> <span class="n">fast5s</span><span class="p">:</span>
+                <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">queue</span><span class="o">.</span><span class="n">qsize</span><span class="p">()</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_size</span><span class="p">:</span>
+                        <span class="n">future</span> <span class="o">=</span> <span class="n">executor</span><span class="o">.</span><span class="n">submit</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">extractor</span><span class="p">,</span> <span class="n">fname</span><span class="p">)</span>
+                        <span class="n">future</span><span class="o">.</span><span class="n">add_done_callback</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_store</span><span class="p">)</span>
+                        <span class="k">break</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_store</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">future</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Store read data from a future.&quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">results</span> <span class="o">=</span> <span class="n">future</span><span class="o">.</span><span class="n">result</span><span class="p">()</span>
+            <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+            <span class="k">pass</span>
+        <span class="c1"># https://bugs.python.org/issue27144</span>
+        <span class="n">future</span><span class="o">.</span><span class="n">_result</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">files_processed</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Extracted </span><span class="si">{}</span><span class="s2">/</span><span class="si">{}</span><span class="s2"> files.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">files_processed</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">total_files</span><span class="p">))</span>
+
+<div class="viewcode-block" id="Extractor.get"><a class="viewcode-back" href="../../medaka.html#medaka.methdaka.Extractor.get">[docs]</a>    <span class="k">def</span> <span class="nf">get</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Get a read from the internal queue.&quot;&quot;&quot;</span>
+        <span class="n">item</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">queue</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">item</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">queue</span><span class="o">.</span><span class="n">task_done</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">StopIteration</span><span class="p">(</span><span class="s1">&#39;All items processed.&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">item</span></div>
+
+    <span class="k">def</span> <span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Iterate over read data from files.&quot;&quot;&quot;</span>
+        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">yield</span> <span class="bp">self</span><span class="o">.</span><span class="n">get</span><span class="p">()</span>
+            <span class="k">except</span> <span class="ne">StopIteration</span><span class="p">:</span>
+                <span class="k">break</span></div>
+
+
+<div class="viewcode-block" id="hdf_to_sam"><a class="viewcode-back" href="../../medaka.html#medaka.methdaka.hdf_to_sam">[docs]</a><span class="k">def</span> <span class="nf">hdf_to_sam</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Entry point for converting guppy methylcalled fast5s to sam.&quot;&quot;&quot;</span>
+    <span class="n">logger</span> <span class="o">=</span> <span class="n">medaka</span><span class="o">.</span><span class="n">common</span><span class="o">.</span><span class="n">get_named_logger</span><span class="p">(</span><span class="s1">&#39;ModExtract&#39;</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;NOTE: Mod. base scores are output w.r.t the sequencing direction, &quot;</span>
+        <span class="s2">&quot;not the aligned read orientation.&quot;</span><span class="p">)</span>
+    <span class="n">extractor</span> <span class="o">=</span> <span class="n">Extractor</span><span class="p">(</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+        <span class="n">recursive</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">recursive</span><span class="p">,</span> <span class="n">workers</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">io_workers</span><span class="p">)</span>
+
+    <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\t</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">((</span><span class="s1">&#39;@HD&#39;</span><span class="p">,</span> <span class="s1">&#39;VN:1.5&#39;</span><span class="p">,</span> <span class="s1">&#39;SO:unsorted&#39;</span><span class="p">)))</span>
+    <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+    <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\t</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">((</span>
+        <span class="s1">&#39;@CO&#39;</span><span class="p">,</span> <span class="s1">&#39;Guppy basecaller mod. base tags are stored w.r.t. the &#39;</span>
+        <span class="s1">&#39;sequencing direction, they should be reversed for reads &#39;</span>
+        <span class="s1">&#39;aligning to the reverse strand.</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)))</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">reference</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># write unaligned sam</span>
+        <span class="k">for</span> <span class="n">read</span><span class="p">,</span> <span class="n">tags</span> <span class="ow">in</span> <span class="n">extractor</span><span class="p">:</span>
+            <span class="n">sam</span> <span class="o">=</span> <span class="n">unaligned_read</span><span class="p">(</span><span class="n">read</span><span class="p">,</span> <span class="n">tags</span><span class="p">)</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;</span><span class="si">{}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">sam</span><span class="p">))</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">seq</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">mappy</span><span class="o">.</span><span class="n">fastx_read</span><span class="p">(</span>
+                <span class="n">args</span><span class="o">.</span><span class="n">reference</span><span class="p">,</span> <span class="n">read_comment</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;@SQ</span><span class="se">\t</span><span class="s1">SN:</span><span class="si">{}</span><span class="se">\t</span><span class="s1">LN:</span><span class="si">{}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">seq</span><span class="p">)))</span>
+        <span class="n">aligner</span> <span class="o">=</span> <span class="n">Aligner</span><span class="p">(</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">reference</span><span class="p">,</span> <span class="n">preset</span><span class="o">=</span><span class="s1">&#39;map-ont&#39;</span><span class="p">,</span> <span class="n">n_threads</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">workers</span><span class="p">)</span>
+
+        <span class="k">def</span> <span class="nf">_write</span><span class="p">(</span><span class="n">future</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">sam</span> <span class="o">=</span> <span class="n">future</span><span class="o">.</span><span class="n">result</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">sam</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;</span><span class="si">{}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">sam</span><span class="p">))</span>
+            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                <span class="k">pass</span>
+            <span class="c1"># https://bugs.python.org/issue27144</span>
+            <span class="n">future</span><span class="o">.</span><span class="n">_result</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="k">with</span> <span class="n">ThreadPoolExecutor</span><span class="p">(</span>
+                <span class="n">max_items</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">workers</span><span class="p">,</span> <span class="n">max_workers</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">workers</span><span class="p">)</span> <span class="k">as</span> <span class="n">executor</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">read</span><span class="p">,</span> <span class="n">tags</span> <span class="ow">in</span> <span class="n">extractor</span><span class="p">:</span>
+                <span class="n">future</span> <span class="o">=</span> <span class="n">executor</span><span class="o">.</span><span class="n">submit</span><span class="p">(</span><span class="n">aligner</span><span class="o">.</span><span class="n">map</span><span class="p">,</span> <span class="n">read</span><span class="p">,</span> <span class="n">tags</span><span class="p">)</span>
+                <span class="n">future</span><span class="o">.</span><span class="n">add_done_callback</span><span class="p">(</span><span class="n">_write</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="MotifTracker"><a class="viewcode-back" href="../../medaka.html#medaka.methdaka.MotifTracker">[docs]</a><span class="k">class</span> <span class="nc">MotifTracker</span><span class="p">():</span>
+    <span class="sd">&quot;&quot;&quot;Track methylation counts of a motif while parsing a pileup.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ref</span><span class="p">,</span> <span class="n">region</span><span class="p">,</span> <span class="n">seq</span><span class="p">,</span> <span class="n">strand_offsets</span><span class="p">,</span> <span class="n">tag</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Initialize the tracker.</span>
+
+<span class="sd">        :param ref: reference sequence.</span>
+<span class="sd">        :param region: region of reference to parse.</span>
+<span class="sd">        :param seq: the motif search to examine.</span>
+<span class="sd">        :param strand_offsets: positions of motif to examine on forward and</span>
+<span class="sd">            reverse strands (`None` if a particular strand shouldn&#39;t be</span>
+<span class="sd">            examined.)</span>
+<span class="sd">        :param tag: bam tag to look up data.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">motif</span> <span class="o">=</span> <span class="n">seq</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ref</span> <span class="o">=</span> <span class="n">ref</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">region</span> <span class="o">=</span> <span class="n">region</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">seq</span> <span class="o">=</span> <span class="n">seq</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tag</span> <span class="o">=</span> <span class="n">tag</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fwd_offset</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rev_offset</span> <span class="o">=</span> <span class="n">strand_offsets</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">has_fwd</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fwd_offset</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">has_rev</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rev_offset</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">loci</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_find_loci</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ref</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">motif</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">region</span><span class="o">.</span><span class="n">start</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">region</span><span class="o">.</span><span class="n">end</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_queue</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">reset_counters</span><span class="p">()</span>
+
+<div class="viewcode-block" id="MotifTracker.reset_counters"><a class="viewcode-back" href="../../medaka.html#medaka.methdaka.MotifTracker.reset_counters">[docs]</a>    <span class="k">def</span> <span class="nf">reset_counters</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Reset methylation counters to zero.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">meth</span> <span class="o">=</span> <span class="n">Counter</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">not_meth</span> <span class="o">=</span> <span class="n">Counter</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="MotifTracker.add"><a class="viewcode-back" href="../../medaka.html#medaka.methdaka.MotifTracker.add">[docs]</a>    <span class="k">def</span> <span class="nf">add</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">is_meth</span><span class="p">,</span> <span class="n">is_rev</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Add a methylation/non methylation count to the tallies.</span>
+
+<span class="sd">        :param is_meth: boolean, the count to which to add.</span>
+<span class="sd">        :param is_rev: if given checked against internal state to ensure</span>
+<span class="sd">            caller is adding to the correct count.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">is_rev</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="n">is_rev</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_rev</span>
+        <span class="k">if</span> <span class="n">is_meth</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">meth</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">is_rev</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">not_meth</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">is_rev</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span></div>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">summary</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return a tuple of counts and meta data.</span>
+
+<span class="sd">        The data returned is:</span>
+
+<span class="sd">            * reference name</span>
+<span class="sd">            * reference position</span>
+<span class="sd">            * motif sequence</span>
+<span class="sd">            * modified count fwd. strand</span>
+<span class="sd">            * modified count rev. strand</span>
+<span class="sd">            * non-modified count fwd. strand</span>
+<span class="sd">            * non-modified count rev. strand</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">region</span><span class="o">.</span><span class="n">ref_name</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">motif</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">meth</span><span class="p">[</span><span class="kc">False</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">meth</span><span class="p">[</span><span class="kc">True</span><span class="p">],</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">not_meth</span><span class="p">[</span><span class="kc">False</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">not_meth</span><span class="p">[</span><span class="kc">True</span><span class="p">])</span>
+
+    <span class="k">def</span> <span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return self.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="k">def</span> <span class="fm">__next__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Iterate over the reference positions which need to be examined.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_queue</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">index</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">loci</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_fwd</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_queue</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="kc">False</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">index</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">fwd_offset</span><span class="p">))</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_rev</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_queue</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="kc">True</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">index</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">rev_offset</span><span class="p">))</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_fwd</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_rev</span><span class="p">:</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">rev_offset</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">fwd_offset</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_queue</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_queue</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">item</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_queue</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">is_rev</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">pos</span> <span class="o">=</span> <span class="n">item</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">taken_all</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_queue</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span>
+        <span class="k">return</span> <span class="n">item</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">_find_loci</span><span class="p">(</span><span class="n">ref</span><span class="p">,</span> <span class="n">motif</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">):</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="n">start</span>
+        <span class="k">while</span> <span class="n">index</span> <span class="o">&lt;</span> <span class="n">end</span><span class="p">:</span>
+            <span class="n">index</span> <span class="o">=</span> <span class="n">ref</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="n">motif</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">index</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+                <span class="k">break</span>
+            <span class="k">yield</span> <span class="n">index</span>
+            <span class="n">index</span> <span class="o">+=</span> <span class="mi">1</span></div>
+
+
+<div class="viewcode-block" id="call_methylation"><a class="viewcode-back" href="../../medaka.html#medaka.methdaka.call_methylation">[docs]</a><span class="k">def</span> <span class="nf">call_methylation</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Entry point for calling methylation from bam file.&quot;&quot;&quot;</span>
+    <span class="n">logger</span> <span class="o">=</span> <span class="n">medaka</span><span class="o">.</span><span class="n">common</span><span class="o">.</span><span class="n">get_named_logger</span><span class="p">(</span><span class="s1">&#39;Mextract&#39;</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Processing </span><span class="si">{}</span><span class="s2">.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">bam</span><span class="p">))</span>
+    <span class="n">region</span> <span class="o">=</span> <span class="n">medaka</span><span class="o">.</span><span class="n">common</span><span class="o">.</span><span class="n">get_regions</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">bam</span><span class="p">,</span> <span class="p">[</span><span class="n">args</span><span class="o">.</span><span class="n">region</span><span class="p">])[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">ref</span> <span class="o">=</span> <span class="n">pysam</span><span class="o">.</span><span class="n">FastaFile</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">reference</span><span class="p">)</span>
+    <span class="n">ref</span> <span class="o">=</span> <span class="n">ref</span><span class="o">.</span><span class="n">fetch</span><span class="p">(</span><span class="n">region</span><span class="o">.</span><span class="n">ref_name</span><span class="p">)</span>
+    <span class="n">motifs</span> <span class="o">=</span> <span class="n">MOTIFS</span><span class="p">[</span><span class="n">args</span><span class="o">.</span><span class="n">meth</span><span class="p">]</span>
+
+    <span class="n">additional_text</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">meth</span> <span class="o">==</span> <span class="s1">&#39;all&#39;</span><span class="p">:</span>
+        <span class="n">additional_text</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="s2">&quot; Note motifs are stranded, such that both &#39;C&#39; and &#39;G&#39; (and &#39;A&#39; &quot;</span>
+            <span class="s2">&quot;and &#39;T&#39;) bases will be seen in the output for 5mC (6mA). &quot;</span>
+            <span class="s2">&quot;Output with a &#39;G&#39; (&#39;T&#39; for 6mA) correspond to the reverse &quot;</span>
+            <span class="s2">&quot;strand. Users should post process the output to join/sum lines &quot;</span>
+            <span class="s2">&quot;belonging to the same genomic loci.&quot;</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">args</span><span class="o">.</span><span class="n">meth</span> <span class="o">==</span> <span class="s1">&#39;dcm&#39;</span><span class="p">:</span>
+        <span class="n">additional_text</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="s2">&quot; The output is sorted by motif, users may wish to subsequently &quot;</span>
+            <span class="s2">&quot;sorted by position.&quot;</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Calling methylation at </span><span class="si">{}</span><span class="s2"> sites.</span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">meth</span><span class="p">,</span> <span class="n">additional_text</span><span class="p">))</span>
+
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">output</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">fh</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">pysam</span><span class="o">.</span><span class="n">AlignmentFile</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">bam</span><span class="p">,</span> <span class="s2">&quot;rb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">bam</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">seq</span><span class="p">,</span> <span class="n">motif_info</span> <span class="ow">in</span> <span class="n">motifs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="n">tracker</span> <span class="o">=</span> <span class="n">MotifTracker</span><span class="p">(</span><span class="n">ref</span><span class="p">,</span> <span class="n">region</span><span class="p">,</span> <span class="n">seq</span><span class="p">,</span> <span class="o">*</span><span class="n">motif_info</span><span class="p">)</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Searching for motif &#39;</span><span class="si">{}</span><span class="s2">&#39;.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">seq</span><span class="p">))</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="nb">next</span><span class="p">(</span><span class="n">tracker</span><span class="p">)</span>
+                <span class="k">except</span> <span class="ne">StopIteration</span><span class="p">:</span>
+                    <span class="k">continue</span>
+
+                <span class="k">for</span> <span class="n">pileupcolumn</span> <span class="ow">in</span> <span class="n">bam</span><span class="o">.</span><span class="n">pileup</span><span class="p">(</span>
+                        <span class="n">region</span><span class="o">.</span><span class="n">ref_name</span><span class="p">,</span> <span class="n">region</span><span class="o">.</span><span class="n">start</span><span class="p">,</span> <span class="n">region</span><span class="o">.</span><span class="n">end</span><span class="p">):</span>
+                    <span class="k">if</span> <span class="p">(</span><span class="n">pileupcolumn</span><span class="o">.</span><span class="n">pos</span> <span class="o">-</span> <span class="n">region</span><span class="o">.</span><span class="n">start</span><span class="p">)</span> <span class="o">%</span> <span class="mi">1000000</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="n">done</span> <span class="o">=</span> <span class="n">pileupcolumn</span><span class="o">.</span><span class="n">pos</span> <span class="o">-</span> <span class="n">region</span><span class="o">.</span><span class="n">start</span>
+                        <span class="n">pct_done</span> <span class="o">=</span> <span class="mi">100</span> <span class="o">*</span> <span class="n">done</span> <span class="o">//</span> <span class="p">(</span><span class="n">region</span><span class="o">.</span><span class="n">end</span> <span class="o">-</span> <span class="n">region</span><span class="o">.</span><span class="n">start</span><span class="p">)</span>
+                        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                            <span class="s2">&quot;Processed </span><span class="si">{}</span><span class="s2"> ref positions (</span><span class="si">{}</span><span class="s2">%)&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                                <span class="n">done</span><span class="p">,</span> <span class="n">pct_done</span><span class="p">))</span>
+                    <span class="k">if</span> <span class="n">pileupcolumn</span><span class="o">.</span><span class="n">pos</span> <span class="o">!=</span> <span class="n">tracker</span><span class="o">.</span><span class="n">pos</span><span class="p">:</span>
+                        <span class="k">continue</span>
+                    <span class="k">for</span> <span class="n">read</span> <span class="ow">in</span> <span class="n">pileupcolumn</span><span class="o">.</span><span class="n">pileups</span><span class="p">:</span>
+                        <span class="n">aln</span> <span class="o">=</span> <span class="n">read</span><span class="o">.</span><span class="n">alignment</span>
+                        <span class="k">if</span> <span class="n">read</span><span class="o">.</span><span class="n">is_del</span> \
+                                <span class="ow">or</span> <span class="n">read</span><span class="o">.</span><span class="n">is_refskip</span> \
+                                <span class="ow">or</span> <span class="n">aln</span><span class="o">.</span><span class="n">is_reverse</span> <span class="o">!=</span> <span class="n">tracker</span><span class="o">.</span><span class="n">is_rev</span><span class="p">:</span>
+                            <span class="k">continue</span>
+                        <span class="n">qpos</span> <span class="o">=</span> <span class="n">read</span><span class="o">.</span><span class="n">query_position</span>
+                        <span class="n">tag</span> <span class="o">=</span> <span class="n">read</span><span class="o">.</span><span class="n">alignment</span><span class="o">.</span><span class="n">get_tag</span><span class="p">(</span><span class="n">tracker</span><span class="o">.</span><span class="n">tag</span><span class="p">)</span>
+                        <span class="c1"># NOTE: tags are not reversed, see above</span>
+                        <span class="k">if</span> <span class="ow">not</span> <span class="n">aln</span><span class="o">.</span><span class="n">is_reverse</span><span class="p">:</span>
+                            <span class="n">mscore</span> <span class="o">=</span> <span class="n">tag</span><span class="p">[</span><span class="n">qpos</span><span class="p">]</span>
+                        <span class="k">else</span><span class="p">:</span>
+                            <span class="n">mscore</span> <span class="o">=</span> <span class="n">tag</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">tag</span><span class="p">)</span> <span class="o">-</span> <span class="n">qpos</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span>
+                        <span class="k">if</span> <span class="n">mscore</span> <span class="o">&gt;</span> <span class="n">args</span><span class="o">.</span><span class="n">filter</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span>
+                            <span class="n">tracker</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="kc">True</span><span class="p">)</span>
+                        <span class="k">elif</span> <span class="n">mscore</span> <span class="o">&lt;</span> <span class="n">args</span><span class="o">.</span><span class="n">filter</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+                            <span class="n">tracker</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="kc">False</span><span class="p">)</span>
+
+                    <span class="k">if</span> <span class="n">tracker</span><span class="o">.</span><span class="n">taken_all</span><span class="p">:</span>
+                        <span class="n">fh</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\t</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">tracker</span><span class="o">.</span><span class="n">summary</span><span class="p">))</span>
+                        <span class="n">fh</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+                        <span class="n">tracker</span><span class="o">.</span><span class="n">reset_counters</span><span class="p">()</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="nb">next</span><span class="p">(</span><span class="n">tracker</span><span class="p">)</span>
+                    <span class="k">except</span> <span class="ne">StopIteration</span><span class="p">:</span>
+                        <span class="k">break</span></div>
+</pre></div>
+
+           </div>
+           
+          </div>
+          <footer>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2017-19, Oxford Nanopore Technologies
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>

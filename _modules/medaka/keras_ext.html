@@ -1,0 +1,360 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>medaka.keras_ext &mdash; Medaka 1.0.0 documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+  <script type="text/javascript" src="../../_static/js/modernizr.min.js"></script>
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="../../" src="../../_static/documentation_options.js"></script>
+        <script src="../../_static/jquery.js"></script>
+        <script src="../../_static/underscore.js"></script>
+        <script src="../../_static/doctools.js"></script>
+        <script src="../../_static/language_data.js"></script>
+    
+    <script type="text/javascript" src="../../_static/js/theme.js"></script>
+
+    
+
+  
+  <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="../../index.html" class="icon icon-home"> Medaka
+          
+
+          
+          </a>
+
+          
+            
+            
+              <div class="version">
+                1.0.0
+              </div>
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../installation.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../benchmarks.html">Benchmarks</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../snp.html">Variant calling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../methylation.html">Methylation calling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../walkthrough.html">Walkthrough</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../draft_origin.html">Origin of the draft sequence</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../development.html">Development</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../future.html">History and Future Directions</a></li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Medaka</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="../../index.html">Docs</a> &raquo;</li>
+        
+          <li><a href="../index.html">Module code</a> &raquo;</li>
+        
+          <li><a href="../medaka.html">medaka</a> &raquo;</li>
+        
+      <li>medaka.keras_ext</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <h1>Source code for medaka.keras_ext</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Extensions to keras API for medaka.&quot;&quot;&quot;</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">from</span> <span class="nn">timeit</span> <span class="kn">import</span> <span class="n">default_timer</span> <span class="k">as</span> <span class="n">now</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">tensorflow</span> <span class="k">as</span> <span class="nn">tf</span>
+<span class="kn">from</span> <span class="nn">tensorflow.keras.callbacks</span> <span class="kn">import</span> <span class="n">ModelCheckpoint</span><span class="p">,</span> <span class="n">TensorBoard</span>
+<span class="kn">from</span> <span class="nn">tensorflow.keras.utils</span> <span class="kn">import</span> <span class="n">Sequence</span>
+
+<span class="kn">import</span> <span class="nn">medaka.common</span>
+<span class="kn">import</span> <span class="nn">medaka.datastore</span>
+
+<span class="c1"># define subclassess here to avoid top-level keras import</span>
+
+
+<div class="viewcode-block" id="ModelMetaCheckpoint"><a class="viewcode-back" href="../../medaka.html#medaka.keras_ext.ModelMetaCheckpoint">[docs]</a><span class="k">class</span> <span class="nc">ModelMetaCheckpoint</span><span class="p">(</span><span class="n">ModelCheckpoint</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Custom ModelCheckpoint to add medaka-specific metadata.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">medaka_meta</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Initialize checkpointing.</span>
+
+<span class="sd">        :param medaka_meta: dictionary of meta data to store in checkpoint</span>
+<span class="sd">            files.</span>
+<span class="sd">        :param args: positional arguments for baseclass.</span>
+<span class="sd">        :param kwargs: keyword arguments for baseclass.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">required_meta</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span>
+            <span class="p">(</span><span class="s1">&#39;model_function&#39;</span><span class="p">,</span> <span class="s1">&#39;label_scheme&#39;</span><span class="p">,</span> <span class="s1">&#39;feature_encoder&#39;</span><span class="p">))</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">ModelMetaCheckpoint</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">medaka_meta</span> <span class="o">=</span> <span class="n">medaka_meta</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">set</span><span class="p">(</span><span class="n">medaka_meta</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="o">.</span><span class="n">issubset</span><span class="p">(</span><span class="n">required_meta</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span>
+                <span class="s1">&#39;`medaka_meta may only contain: </span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">required_meta</span><span class="p">))</span>
+
+<div class="viewcode-block" id="ModelMetaCheckpoint.on_epoch_end"><a class="viewcode-back" href="../../medaka.html#medaka.keras_ext.ModelMetaCheckpoint.on_epoch_end">[docs]</a>    <span class="k">def</span> <span class="nf">on_epoch_end</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">epoch</span><span class="p">,</span> <span class="n">logs</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Perform actions at the end of an epoch.&quot;&quot;&quot;</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">ModelMetaCheckpoint</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">on_epoch_end</span><span class="p">(</span><span class="n">epoch</span><span class="p">,</span> <span class="n">logs</span><span class="p">)</span>
+        <span class="n">filepath</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">filepath</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">epoch</span><span class="o">=</span><span class="n">epoch</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="o">**</span><span class="n">logs</span><span class="p">)</span>
+        <span class="k">with</span> <span class="n">medaka</span><span class="o">.</span><span class="n">datastore</span><span class="o">.</span><span class="n">DataStore</span><span class="p">(</span><span class="n">filepath</span><span class="p">,</span> <span class="s1">&#39;a&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">ds</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">medaka_meta</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="n">ds</span><span class="o">.</span><span class="n">set_meta</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">k</span><span class="p">)</span></div></div>
+
+
+<div class="viewcode-block" id="TrainValTensorBoard"><a class="viewcode-back" href="../../medaka.html#medaka.keras_ext.TrainValTensorBoard">[docs]</a><span class="k">class</span> <span class="nc">TrainValTensorBoard</span><span class="p">(</span><span class="n">TensorBoard</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Modification of tensorboard to plot test and validation together.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">log_dir</span><span class="o">=</span><span class="s1">&#39;./logs&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Initialise log writing.&quot;&quot;&quot;</span>
+        <span class="c1"># the strategy here is to log training and validation to different</span>
+        <span class="c1"># subdirectories and rename validation metrics to be the same as</span>
+        <span class="c1"># the training metrics (remove their &#39;val&#39; prefix)</span>
+        <span class="n">training_log_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">log_dir</span><span class="p">,</span> <span class="s1">&#39;training&#39;</span><span class="p">)</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">TrainValTensorBoard</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">training_log_dir</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">val_log_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">log_dir</span><span class="p">,</span> <span class="s1">&#39;validation&#39;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="TrainValTensorBoard.set_model"><a class="viewcode-back" href="../../medaka.html#medaka.keras_ext.TrainValTensorBoard.set_model">[docs]</a>    <span class="k">def</span> <span class="nf">set_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Set writer for validation metrics.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">val_writer</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">summary</span><span class="o">.</span><span class="n">FileWriter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">val_log_dir</span><span class="p">)</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">TrainValTensorBoard</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">set_model</span><span class="p">(</span><span class="n">model</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="TrainValTensorBoard.on_epoch_end"><a class="viewcode-back" href="../../medaka.html#medaka.keras_ext.TrainValTensorBoard.on_epoch_end">[docs]</a>    <span class="k">def</span> <span class="nf">on_epoch_end</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">epoch</span><span class="p">,</span> <span class="n">logs</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Write logs on epoch end.&quot;&quot;&quot;</span>
+        <span class="c1"># take validation logs, save separately renaming keys.</span>
+        <span class="c1"># epoch is added as this is what `on_epoch_end` does</span>
+        <span class="n">logs</span> <span class="o">=</span> <span class="n">logs</span> <span class="ow">or</span> <span class="p">{}</span>
+        <span class="n">val_logs</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="n">k</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;val_&#39;</span><span class="p">,</span> <span class="s1">&#39;epoch_&#39;</span><span class="p">):</span> <span class="n">v</span>
+            <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">logs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">&#39;val_&#39;</span><span class="p">)}</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">val_logs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">summary</span> <span class="o">=</span> <span class="n">tf</span><span class="o">.</span><span class="n">Summary</span><span class="p">()</span>
+            <span class="n">summary_value</span> <span class="o">=</span> <span class="n">summary</span><span class="o">.</span><span class="n">value</span><span class="o">.</span><span class="n">add</span><span class="p">()</span>
+            <span class="n">summary_value</span><span class="o">.</span><span class="n">simple_value</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+            <span class="n">summary_value</span><span class="o">.</span><span class="n">tag</span> <span class="o">=</span> <span class="n">name</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">val_writer</span><span class="o">.</span><span class="n">add_summary</span><span class="p">(</span><span class="n">summary</span><span class="p">,</span> <span class="n">epoch</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">val_writer</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+
+        <span class="c1"># take remaining logs and handle normally</span>
+        <span class="n">logs</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">logs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">k</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">&#39;val_&#39;</span><span class="p">)}</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">TrainValTensorBoard</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">on_epoch_end</span><span class="p">(</span><span class="n">epoch</span><span class="p">,</span> <span class="n">logs</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="TrainValTensorBoard.on_train_end"><a class="viewcode-back" href="../../medaka.html#medaka.keras_ext.TrainValTensorBoard.on_train_end">[docs]</a>    <span class="k">def</span> <span class="nf">on_train_end</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">logs</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Close the validation writer on exit.&quot;&quot;&quot;</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">TrainValTensorBoard</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">on_train_end</span><span class="p">(</span><span class="n">logs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">val_writer</span><span class="o">.</span><span class="n">close</span><span class="p">()</span></div></div>
+
+
+<div class="viewcode-block" id="SequenceBatcher"><a class="viewcode-back" href="../../medaka.html#medaka.keras_ext.SequenceBatcher">[docs]</a><span class="k">class</span> <span class="nc">SequenceBatcher</span><span class="p">(</span><span class="n">Sequence</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Interface for keras to a `TrainBatcher` for training and validation.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">batcher</span><span class="p">,</span> <span class="n">dataset</span><span class="o">=</span><span class="s1">&#39;train&#39;</span><span class="p">,</span> <span class="n">mini_epochs</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Initialize batching for training.</span>
+
+<span class="sd">        :param batcher: a `medaka.inference.TrainBatcher` instance.</span>
+<span class="sd">        :param dataset: one of &#39;train&#39; or &#39;validation&#39;.</span>
+<span class="sd">        :param mini_epochs: factor by which to rescale the number of batches</span>
+<span class="sd">            in an epoch (useful to output checkpoints more frequently).</span>
+<span class="sd">        :param seed: random seed for shuffling data.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">batcher</span> <span class="o">=</span> <span class="n">batcher</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dataset</span> <span class="o">=</span> <span class="n">dataset</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mini_epochs</span> <span class="o">=</span> <span class="n">mini_epochs</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">batch_size</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">batcher</span><span class="o">.</span><span class="n">batch_size</span>
+        <span class="k">if</span> <span class="n">seed</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="n">seed</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">epoch</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="k">if</span> <span class="n">dataset</span> <span class="o">==</span> <span class="s1">&#39;train&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">batcher</span><span class="o">.</span><span class="n">train_samples</span>
+        <span class="k">elif</span> <span class="n">dataset</span> <span class="o">==</span> <span class="s1">&#39;validation&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">batcher</span><span class="o">.</span><span class="n">valid_samples</span>
+            <span class="k">if</span> <span class="n">mini_epochs</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">&quot;&#39;mini_epochs&#39; must be equal to 1 for validation data.&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;&#39;dataset&#39; should be &#39;train&#39; or &#39;validation&#39;.&quot;</span><span class="p">)</span>
+
+        <span class="n">original_size</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_batches</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">)</span> <span class="o">//</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_size</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[:</span><span class="bp">self</span><span class="o">.</span><span class="n">n_batches</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">batch_size</span><span class="p">]</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">shuffle</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">logger</span> <span class="o">=</span> <span class="n">medaka</span><span class="o">.</span><span class="n">common</span><span class="o">.</span><span class="n">get_named_logger</span><span class="p">(</span>
+            <span class="s1">&#39;</span><span class="si">{}</span><span class="s1">Batcher&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">dataset</span><span class="o">.</span><span class="n">capitalize</span><span class="p">()))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s1">&#39;</span><span class="si">{}</span><span class="s1"> batches of </span><span class="si">{}</span><span class="s1"> samples (</span><span class="si">{}</span><span class="s1">), from </span><span class="si">{}</span><span class="s1"> original.&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">n_batches</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_size</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">),</span>
+                <span class="n">original_size</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="fm">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return the number of batches.&quot;&quot;&quot;</span>
+        <span class="c1"># report our length (to keras) as being the size of a mini_epoch batch</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_batches</span> <span class="o">//</span> <span class="bp">self</span><span class="o">.</span><span class="n">mini_epochs</span>
+
+    <span class="k">def</span> <span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Return the ith batch.&quot;&quot;&quot;</span>
+        <span class="n">t0</span> <span class="o">=</span> <span class="n">now</span><span class="p">()</span>
+        <span class="n">bs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_size</span>
+        <span class="c1"># offset into where miniepoch starts: miniepoch * samples in miniepoch</span>
+        <span class="n">mb_offset</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">epoch</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">mini_epochs</span><span class="p">)</span> <span class="o">*</span> \
+            <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">)</span> <span class="o">//</span> <span class="bp">self</span><span class="o">.</span><span class="n">mini_epochs</span><span class="p">)</span>
+        <span class="n">start</span><span class="p">,</span> <span class="n">stop</span> <span class="o">=</span> <span class="n">mb_offset</span> <span class="o">+</span> <span class="n">idx</span> <span class="o">*</span> <span class="n">bs</span><span class="p">,</span> <span class="n">mb_offset</span> <span class="o">+</span> <span class="p">(</span><span class="n">idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">bs</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dataset</span> <span class="o">==</span> <span class="s1">&#39;validation&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Request for batch </span><span class="si">{}</span><span class="s2">: [</span><span class="si">{}</span><span class="s2">:</span><span class="si">{}</span><span class="s2">], </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                <span class="n">idx</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">stop</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">)))</span>
+        <span class="n">samples</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="n">start</span><span class="p">:</span><span class="n">stop</span><span class="p">]</span>
+        <span class="n">batch</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">batcher</span><span class="o">.</span><span class="n">samples_to_batch</span><span class="p">(</span><span class="n">samples</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dataset</span> <span class="o">==</span> <span class="s1">&#39;validation&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+                <span class="s2">&quot;Took </span><span class="si">{:5.3}</span><span class="s2">s to load batch </span><span class="si">{}</span><span class="s2">. (epoch </span><span class="si">{}</span><span class="s2">)&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                    <span class="n">now</span><span class="p">()</span> <span class="o">-</span> <span class="n">t0</span><span class="p">,</span> <span class="n">idx</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">epoch</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">batch</span>
+
+<div class="viewcode-block" id="SequenceBatcher.on_epoch_end"><a class="viewcode-back" href="../../medaka.html#medaka.keras_ext.SequenceBatcher.on_epoch_end">[docs]</a>    <span class="k">def</span> <span class="nf">on_epoch_end</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Perform actions at the end of an epoch.&quot;&quot;&quot;</span>
+        <span class="c1"># shuffle data at end of miniepoch</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">epoch</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dataset</span> <span class="o">==</span> <span class="s1">&#39;train&#39;</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">epoch</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">mini_epochs</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Shuffling data&quot;</span><span class="p">)</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">shuffle</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">)</span></div></div>
+</pre></div>
+
+           </div>
+           
+          </div>
+          <footer>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2017-19, Oxford Nanopore Technologies
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>
