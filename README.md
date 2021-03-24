@@ -48,7 +48,12 @@ Medaka can be installed in one of several ways.
 
 **Installation with conda**
 
-Perhaps the simplest way to start using medaka on both Linux and MacOS is
+> The latest available release of medaka through bioconda is v1.2.3,
+> later versions are available through PyPI. The bioconda package build
+> is currently [broken](https://github.com/bioconda/bioconda-recipes/pull/27176) and is unlikely to be fixed in the near future
+> without help from the community.
+
+Perhaps the simplest way to start using medaka is
 through conda; medaka is available via the
 [bioconda](https://anaconda.org/bioconda/medaka) channel:
 
